@@ -3791,6 +3791,7 @@ bool load_baseline_csv(const std::string& path, CapTable& baseline) {
 void apply_legacy_fixed_c1_c5(Bounds& bounds,
                               CapTable& baseline,
                               MaskConstraints& mask) {
+    /*你看你前一个代码跑出来的值，哪些电容接近，固定他跑这个代码*/
     constexpr double legacy_c1 = 0.20 * PF;
     constexpr double legacy_c5 = 1.14 * PF;
     bounds.lower[CELL_C1] = legacy_c1;

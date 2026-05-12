@@ -8,6 +8,7 @@
 | --- | --- |
 | `finalcheck(a1).cpp` | 对应论文中的 Algorithm 1。它是约束收敛后的最终检查程序，当前默认只打开 N78，使用紧凑 GA 对单个目标 band 做最终 re-optimization / final check。 |
 | `firstcheck(a2).cpp` | 对应论文中 Algorithm 2-7 的完整探索框架。它同时考虑 N77/N78/N79 三个模式，支持 RF-only 搜索、共享压缩、硬件代价、baseline 偏移约束、GA/DE/jDE/hybrid 等策略。 |
+| `branch.cpp` | 可用于版图参数定位，帮助初步估算开关电容分支相关参数。这个计算略为粗糙，如果是有 RF 设计经验的人可以不用。 |
 | `tools/find_feasible.cpp` | 基于 `firstcheck(a2).cpp` 的辅助可行解搜索器。它把主函数临时重命名后复用内部 RF 评估函数，按单个 mode 寻找更容易满足 dense check 的候选行。 |
 | `tools/run_active_gpp.ps1` | Windows 下编译并运行当前 C++ 源文件的脚本，输出到本地 `build` 文件夹。 |
 | `tools/start_active_gpp_run.ps1` | 启动上面 runner 的 PowerShell 包装脚本。 |
