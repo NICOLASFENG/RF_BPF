@@ -31,7 +31,7 @@ constexpr double PF = 1e-12;
 constexpr double NH = 1e-9;
 constexpr double GHZ = 1e9;
 constexpr double Z0 = 50.0;
-constexpr double CAP_STEP = 0.01 * PF;
+constexpr double CAP_STEP = 0.005 * PF;
 constexpr double INF = 1e100;
 constexpr double TINY_DELTA_LOW = 0.005 * PF;
 constexpr double TINY_DELTA_HIGH = 0.050 * PF;
@@ -245,19 +245,19 @@ struct MaskConstraints {
 };
 
 struct Config {
-    int population_size = 1000;
-    int max_generations = 1800;
-    int max_restarts = 5;
+    int population_size = 1800;
+    int max_generations = 4000;
+    int max_restarts = 8;
     int elite_count = 40;
     int tournament_size = 4;
     int dense_check_interval = 25;
     int elite_dense_interval = 5;
     int mid_check_interval = 5;
-    int mid_top_count = 80;
-    int dense_top_count = 24;
+    int mid_top_count = 140;
+    int dense_top_count = 48;
     int progress_interval = 100;
     int archive_top_scan = 80;
-    int archive_per_sharing = 5;
+    int archive_per_sharing = 8;
     int threads = 0;
     double crossover_rate = 0.92;
     double mutation_rate = 0.30;
@@ -283,7 +283,7 @@ struct Config {
     double wide_jitter_sigma = 0.35;
     double random_seed_blend_min = 0.0;
     double random_seed_blend_max = 0.20;
-    int stagnation_threshold = 150;
+    int stagnation_threshold = 320;
     double stagnation_inject_fraction = 0.30;
     bool jde_mode = false;
     double jde_F_init = 0.5;
@@ -300,7 +300,7 @@ struct Config {
     int pattern_failure_limit = 3;
     bool pattern_first = false;
     bool local_polish = false;
-    int local_polish_steps = 60;
+    int local_polish_steps = 180;
     bool enable_early_exit = false;
     bool benchmark_short = false;
     bool use_share_patterns = false;
@@ -562,10 +562,10 @@ CapTable make_baseline_table() {
     return {{
         {{0.20 * PF, 1.49 * PF, 5.00 * PF, 1.12 * PF, 1.14 * PF,
           5.00 * PF, 1.43 * PF, 0.67 * PF, 0.54 * PF}},
-        {{0.20 * PF, 0.92 * PF, 3.32 * PF, 1.40 * PF, 1.14 * PF,
-          1.63 * PF, 1.94 * PF, 0.43 * PF, 0.90 * PF}},
-        {{0.20 * PF, 0.92 * PF, 0.85 * PF, 0.93 * PF, 1.14 * PF,
-          0.88 * PF, 1.05 * PF, 0.26 * PF, 0.49 * PF}}
+        {{0.46 * PF, 1.76 * PF, 4.18 * PF, 0.78 * PF, 1.87 * PF,
+          2.91 * PF, 0.64 * PF, 0.92 * PF, 0.37 * PF}},
+        {{0.31 * PF, 2.08 * PF, 1.27 * PF, 2.21 * PF, 0.74 * PF,
+          5.62 * PF, 2.36 * PF, 0.58 * PF, 1.03 * PF}}
     }};
 }
 
@@ -4207,6 +4207,7 @@ void print_startup(const Config& cfg,
     std::cout << "GA config: population=" << cfg.population_size
               << ", generations=" << cfg.max_generations
               << ", restarts=" << cfg.max_restarts
+              << ", cap_step=" << pf(CAP_STEP) << " pF"
               << ", seed=" << cfg.seed
               << ", rf_only=" << yes_no(cfg.rf_only)
               << ", two_stage=" << yes_no(cfg.two_stage)
