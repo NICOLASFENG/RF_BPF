@@ -147,3 +147,155 @@ g++ -std=c++17 -O3 -march=native -fopenmp "tools/find_feasible.cpp" -o find_feas
 本项目输出的是 ideal LC target capacitance。真正用于版图和 tape-out 前，还必须用 PDK 的 MIM 电容、NMOS 开关 Ron/Coff、有限 Q 电感、substrate loss、routing parasitic 和 post-layout extraction 重新校正。也就是说，这里的程序负责找到“电路拓扑和电容目标值的可行起点”，不是最终物理尺寸签核工具。
 
 如果需要上传结果，请只提交源码和必要说明。`build`、exe、log、CSV 和论文手稿都应视为本地运行产物或写作资料。
+
+---
+
+# English Version
+
+This repository contains C++ optimization utilities for a TGV-IPD reconfigurable RF band-pass filter. The code does not directly generate layout PCells. Instead, it searches target capacitance values for C1-C9 under ideal LC assumptions and practical constraints, then checks passband, stopband, harmonic rejection, and transmission-zero placement for N77, N78, and N79 operating modes. The results are intended as initial values for later schematic work, PDK device modeling, and PEX correction.
+
+## File Structure
+
+| File | Purpose |
+| --- | --- |
+| `finalcheck(a1).cpp` | Corresponds to Algorithm 1 in the paper. It is a compact final-check program after constraint convergence. The current default enables only N78 and uses a compact GA for final re-optimization / final checking of a single target band. |
+| `firstcheck(a2).cpp` | Corresponds to the complete Algorithm 2-7 exploration framework. It considers N77/N78/N79 at the same time and supports RF-only search, sharing compression, hardware cost, baseline-distance constraints, and GA/DE/jDE/hybrid strategies. |
+| `branch.cpp` | Can be used for layout parameter positioning and rough estimation of switched-capacitor branch parameters. The calculation is intentionally approximate; designers with RF design experience may not need it. |
+| `tools/find_feasible.cpp` | Helper search tool based on `firstcheck(a2).cpp`. It temporarily renames the main function and reuses the internal RF evaluation functions to search for per-mode rows that are easier to pass dense checking. |
+| `tools/run_active_gpp.ps1` | Windows script for compiling and running the active C++ source file. Build output goes to the local `build` folder. |
+| `tools/start_active_gpp_run.ps1` | PowerShell wrapper used to start the runner above. |
+
+The `build` directory is only for locally compiled executables, logs, and temporary results. It is not part of the source logic.
+
+## Physical And Circuit Model
+
+The filter is modeled as a 2-port LC network. Port nodes are 0 and 8, and internal nodes are 1-7. Capacitors C1-C9 and fixed inductors L1-L5 are represented through a nodal admittance matrix:
+
+- Capacitor branches are stamped as `j*w*C`.
+- Inductor branches are stamped as `1/(j*w*L)`.
+- The 7 internal nodes are eliminated by Gaussian elimination to obtain the equivalent port admittance matrix `Yeff`.
+- `Yeff` is converted to S-parameters with a 50 ohm reference impedance, producing `S11` and `S21`.
+
+Core functions:
+
+- `calculate_s_parameters(...)`: builds the MNA admittance matrix and computes S-parameters.
+- `evaluate_mode(...)` / `evaluate_candidate(...)`: converts S-parameter sweep results into return loss, insertion loss, stopband rejection, harmonic rejection, and penalty values.
+- `compute_transmission_zeros(...)`: estimates transmission-zero locations from LC combinations.
+
+The transmission-zero checks mainly use:
+
+- `TZ1 = 1 / (2*pi*sqrt((C3+C4)*L3))`
+- `TZ2 = 1 / (2*pi*sqrt((C6+C7)*L4))`
+- `TZ3 = 1 / (2*pi*sqrt(C9*L2))`
+- `TZ4 = 1 / (2*pi*sqrt(C1*L1))`
+
+These values constrain the relative placement of low-side zeros, high-side zeros, and passband edges.
+
+## Evaluation Metrics
+
+Each candidate capacitance table is evaluated on multiple frequency grids:
+
+- Whether passband `S11` return loss meets the target.
+- Whether passband `S21` insertion loss stays below the target.
+- Minimum rejection in the lower and upper stopbands.
+- Minimum rejection near second- and third-harmonic regions.
+- Whether transmission zeros fall inside reasonable windows.
+- Whether capacitance values can be shared across the three modes, and the resulting hardware complexity.
+
+`firstcheck(a2).cpp` uses coarse, mid, and dense frequency grids. The coarse grid is used for fast ranking, while mid/dense grids periodically verify strong candidates and reduce false feasible solutions that only work on sparse samples.
+
+## firstcheck(a2) Workflow
+
+`firstcheck(a2).cpp` is the full exploration program. Its main flow is:
+
+1. Define N77/N78/N79 bands, stopbands, harmonic windows, and the baseline capacitance table.
+2. Repair the baseline through boundary clipping, 0.01 pF quantization, and optional sharing-mask enforcement.
+3. Initialize the population using baseline seeds, local jitter, wide-range jitter, random sampling, seed-random blending, and sharing-pattern seeds.
+4. Evaluate all candidates on the coarse grid.
+5. Periodically recheck top candidates on mid/dense grids.
+6. Update the population using the configured GA, DE, jDE, or hybrid optimizer.
+7. Maintain an archive of feasible or near-feasible candidates.
+8. Optionally run progressive sharing: try N77/N78, N77/N79, N78/N79, or all-mode sharing, and only accept compression when RF feasibility still holds.
+9. Output the best capacitance table, decomposition, metrics, failure diagnostics, and lambda-sweep CSV files.
+
+The fitness function has two stages:
+
+- If a candidate is infeasible, ranking mainly follows RF penalty and worst violation.
+- Once feasible, sharing cost, hardware cost, and baseline distance are added so the result is RF-valid and easier to implement as a switched-capacitor network with fewer branches and smaller differences.
+
+Common compile command:
+
+```bash
+g++ -std=c++17 -O3 -march=native -fopenmp "firstcheck(a2).cpp" -o ctc_ga
+```
+
+Common run commands:
+
+```bash
+./ctc_ga --two-stage --progressive-sharing --local-polish --output-prefix ctc_ga
+./ctc_ga --rf-only --output-prefix rf_only
+./ctc_ga --eval-baseline-only
+```
+
+Typical outputs:
+
+- `*_best_cap_table.csv`: final C1-C9 target table for the three modes.
+- `*_decomposition.csv`: sharing / branch decomposition results.
+- `*_metrics.csv`: RF metrics for each mode.
+- `*_failure_diagnostics.csv`: failure reasons when constraints are not met.
+- `*_lambda_sweep.csv`: trade-offs under different sharing weights.
+
+## finalcheck(a1) Workflow
+
+`finalcheck(a1).cpp` is a more compact final-check version. It encodes the free capacitances of one target band as GA genes, fixes C1 and L1-L5 by default, and searches combinations for C2-C9. The current `main` function enables N78 by default; N77 and N79 band definitions are kept as commented templates for easy switching.
+
+Main flow:
+
+1. Generate passband, lower stopband, upper stopband, second-harmonic, and third-harmonic sampling points from the target band.
+2. Generate search bounds from band center and empirical transmission-zero constraints.
+3. Build the initial population from the seed bank plus random candidates.
+4. Evaluate and rank candidates on the coarse grid.
+5. Check the current best candidate on the dense grid every `dense_check_interval`.
+6. Continue polishing for several generations after feasibility is found, until stagnation or the generation limit is reached.
+7. Print final C2-C9 values, fixed circuit values, RF conditions, and transmission-zero locations.
+
+Common compile command:
+
+```bash
+g++ -std=c++17 -O3 -march=native "finalcheck(a1).cpp" -o finalcheck
+```
+
+Common run commands:
+
+```bash
+./finalcheck --population 360 --generations 900 --restarts 4
+./finalcheck --seed 20260427 --polish-generations 160
+```
+
+## tools/find_feasible.cpp
+
+This helper is for single-mode feasibility search. It directly includes `firstcheck(a2).cpp` and reuses its band definitions, bounds, baseline table, S-parameter calculation, and dense evaluation, while using a more specialized per-mode search flow.
+
+It is useful when:
+
+- One mode keeps failing dense metrics and needs a better initial row.
+- You want to find a feasible N77, N78, or N79 row first, then feed it back into the full three-mode optimizer.
+- You want to determine whether a failure comes from RF feasibility of one mode or from sharing compression.
+
+Compile example:
+
+```bash
+g++ -std=c++17 -O3 -march=native -fopenmp "tools/find_feasible.cpp" -o find_feasible
+```
+
+Run example:
+
+```bash
+./find_feasible --mode N78 --population 1600 --generations 1600 --threads 8
+```
+
+## Notes
+
+This project outputs ideal LC target capacitance values. Before real layout work or tape-out, the design must be recalibrated with PDK MIM capacitors, NMOS switch Ron/Coff, finite-Q inductors, substrate loss, routing parasitics, and post-layout extraction. In other words, these programs find a feasible starting point for the circuit topology and capacitance targets; they are not final physical-dimension sign-off tools.
+
+When uploading results, commit only source code and necessary documentation. `build`, executables, logs, CSV files, and manuscript drafts should be treated as local run products or writing materials.
