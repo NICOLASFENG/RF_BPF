@@ -1,0 +1,7 @@
+.vscode/
+1.jpg
+build/
+*.exe
+*.log
+*.csv
+*.docx
